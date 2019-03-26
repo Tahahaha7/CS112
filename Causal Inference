@@ -1,0 +1,142 @@
+library(Matching) 
+library(rgenoud) # for GenMatch
+
+# PROBLEM 2
+
+foo <- read.csv("https://course-resources.minerva.kgi.edu/uploaded_files/mke/00086677-3767/peace.csv")
+
+# extract relevant columns
+foo <- foo[, c(6:8, 11:16, 99, 50, 114, 49, 63, 136, 109, 126, 48, 160, 142, 10)]
+
+# remove 2 rows with missing data (there are better ways to handle missing data)
+foo <- foo[c(-19, -47), ]
+
+# check that all missing data is gone...
+which(is.na(foo) == TRUE)
+
+# take a peek at the data set (identify the columns)
+head(foo)
+
+glm_original<-glm(pbs2s3 ~ wartype+logcost+wardur+factnum+factnum2+trnsfcap+untype4+treaty+develop+exp+decade, data = foo, family = "binomial")
+glm_modified<-glm(pbs2s3 ~ wartype+logcost+wardur+factnum+factnum2+trnsfcap+untype4+treaty+develop+exp+decade+wardur*untype4, data = foo, family = "binomial")
+
+m_wartype <- mean(foo$wartype)
+m_logcost <- mean(foo$logcost)
+m_factnum <- mean(foo$factnum)
+m_factnum2 <- mean(foo$factnum2)
+m_trnsfcap <- mean(foo$trnsfcap)
+m_treaty <- mean(foo$treaty)
+m_develop <- mean(foo$develop)
+m_exp <- mean(foo$exp)
+m_decade <- mean(foo$decade)
+
+effect <- c()
+for (i in 1:315){
+  treatment <- data.frame("wartype"=m_wartype, "logcost"=m_logcost, "wardur"= i, "factnum"= m_factnum ,"factnum2"=m_factnum2, "trnsfcap"=m_trnsfcap, "untype4"= as.numeric(1),"treaty"=m_treaty, "develop"=m_develop, "exp"=m_exp, "decade"=m_decade)
+  control <- data.frame("wartype"=m_wartype, "logcost"=m_logcost, "wardur"= i, "factnum"= m_factnum ,"factnum2"=m_factnum2, "trnsfcap"=m_trnsfcap, "untype4"= as.numeric(0),"treaty"=m_treaty, "develop"=m_develop, "exp"=m_exp, "decade"=m_decade)
+  effect[i] <- predict(glm_original, newdata = treatment, type = "response") - predict(glm_original, newdata = control, type = "response")
+}
+
+# plot(c(1:315), effect, pch=19, cex=.1, xlim = c(0, 315), ylim = c(0, 0.8))
+
+
+effect_m <- c()
+for (i in 1:315){
+  treatment <- data.frame("wartype"=m_wartype, "logcost"=m_logcost, "wardur"= i, "factnum"= m_factnum ,"factnum2"=m_factnum2, "trnsfcap"=m_trnsfcap, "untype4"= 1,"treaty"=m_treaty, "develop"=m_develop, "exp"=m_exp, "decade"=m_decade, "wardur*untype4"=i*1)
+  control <- data.frame("wartype"=m_wartype, "logcost"=m_logcost, "wardur"= i, "factnum"= m_factnum ,"factnum2"=m_factnum2, "trnsfcap"=m_trnsfcap, "untype4"= 0,"treaty"=m_treaty, "develop"=m_develop, "exp"=m_exp, "decade"=m_decade, "wardur*untype4"=i*0)
+  effect_m[i] <- predict(glm_modified, newdata = treatment, type = "response") - predict(glm_modified, newdata = control, type = "response")
+}
+
+matplot(c(1:315), cbind(effect_m,effect),type="l", 
+        ylim = c(0, 0.8), col = "black", 
+        xlab = "Duration of wars in months",
+        main = "Causal Effect of Multidimensional UN Peacekeeping Operations",
+        ylab = "Marginal effects of UN peacekeeping operations")
+legend("topright", legend=c("Original model", "Model with interaction term"), lty = c(2, 1), lwd=1)
+
+# PROBLEM 03
+
+foom <- read.csv("https://course-resources.minerva.kgi.edu/uploaded_files/mke/00086677-3767/peace.csv")
+Tr <- rep(0, length(foom$untype))
+Tr[which(foom$untype != "None")] <- 1
+
+
+# PROBLEM 4
+
+# Preparing the data:
+foom <- foom[, c(50, 114, 49, 63, 136, 109, 48, 160, 142, 10, 34, 35)]
+foom <- data.frame(foom, Tr)
+
+# Logistic regression
+# after 2 years
+glm2  <- glm(pbs2l ~ wartype+logcost+wardur+factnum+factnum2+trnsfcap+treaty+develop+exp+decade+Tr, family = binomial, data = foom)
+summary(glm2)
+# the coefficient of the treatment variable from the summary of the model Tr = 0.71305
+
+# after 5 years
+glm5  <- glm(pbs5l ~ wartype+logcost+wardur+factnum+factnum2+trnsfcap+treaty+develop+exp+decade+Tr, family = binomial, data = foom)
+summary(glm5)
+# the coefficient of the treatment variable from the summary of the model Tr = 0.82331
+
+
+
+# ********************************************************************************************** #
+# Propensity score matching
+set.seed(1)
+foom <- na.omit(foom) # take out the rows that contain missing data
+which(is.na(foom) == TRUE)# check that all missing data is gone
+ps  <- glm(Tr~wartype+logcost+wardur+factnum+factnum2
+             +trnsfcap+treaty+develop+exp+decade, 
+            family=binomial, data = foom)
+
+Xf  <- ps$fitted
+Y2  <- foom$pbs2l
+Y5  <- foom$pbs5l
+Tr  <- foom$Tr
+
+
+result2 <- Match(Y=Y2, Tr=Tr, X=Xf, M=1, ties = T, replace = T)
+summary(result2)
+# p.val = 0.12786 
+# Estimate=  0.25823
+result5 <- Match(Y=Y5, Tr=Tr, X=Xf, M=1, ties = T, replace = T) 
+summary(result5)
+
+MB2<-MatchBalance(Tr~wartype+logcost+wardur+factnum+factnum2
+                  +trnsfcap+treaty+develop+exp+decade, 
+                  data=foom, match.out=result2, nboots = 500)
+MB5<-MatchBalance(Tr~wartype+logcost+wardur+factnum+factnum2
+                  +trnsfcap+treaty+develop+exp+decade, 
+                  data=foom, match.out=result5, nboots = 500)
+# **************** #
+result2$est
+result2$est.noadj
+# **************** #
+result5$est
+result5$est.noadj
+# **************** #
+MB2$AMsmallest.p.value
+MB5$AMsmallest.p.value
+
+
+
+# ********************************************************************************************** #
+  # Genetic matching
+set.seed(1234)
+# after 2 years
+# bias adjusted
+Xs <- cbind(foom$wartype, foom$logcost, foom$wardur, foom$factnum, foom$factnum2, foom$trnsfcap, foom$treaty, foom$develop, foom$exp, foom$decade)
+gen <- GenMatch(Tr=Tr, X=Xs , pop.size = 200, M=1, estimand = "ATT",wait.generations = 25, max.generations = 30)
+mgen <- Match(Tr=Tr, X=Xs, Weight.matrix = gen)
+MatchBalance(Tr~wartype+logcost+wardur+factnum+factnum2+trnsfcap+treaty+develop+exp+decade, data = foom, match.out = mgen, nboots = 500)
+
+mgen2 <- Match(Y=Y2, Tr=Tr, X = Xs, Weight.matrix = gen, BiasAdjust = T)
+mgen5 <- Match(Y=Y5, Tr=Tr, X = Xs, Weight.matrix = gen, BiasAdjust = T)
+
+summary(mgen2, full=T)
+summary(mgen5, full=T)
+
+table <- matrix(c("NA",0.71305,"NA","NA",0.82331,"NA",0.36363,"NA",0.01, 0.39393,"NA", 0.008, 0.16113, 0.12121, 0.21, 0.19143, 0.15152, 0.21),ncol=3,byrow=TRUE)
+colnames(table) <- c("tmt effect (bias adj)",	"tmt effect (no bias adj)",	"p-value (from MatchBalance)")
+rownames(table) <- c("logistic regression len success 2 yrs","logistic regression len success 5 yrs","p- score matching len success 2 yrs", "p- score matching len success 5 yrs", "gen match len success 2 yrs", "gen match len success 5 yrs")
+table
