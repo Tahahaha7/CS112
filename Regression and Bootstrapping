@@ -1,0 +1,135 @@
+# Problem 01
+set.seed(123)
+age = floor(runif(99, 18, 50))
+revenue = c()
+for (i in 1:99){
+  revenue[i] = 2000 * age[i] + rnorm(1, 0, 10000)
+}
+data = data.frame(age, revenue)
+model1 <- lm(revenue~age, data = data)
+summary(model1)
+
+new_data <- rbind(data, c(90, -1000000)) 
+model2 <- lm(revenue~age, data = new_data)
+summary(model2)
+
+plot(new_data, pch = 19)
+legend(80, 50000, legend=c("Pre outlier", "Post outlier"), col=c("blue", "red" ), lty=1:2, cex=0.8)
+abline(model1, col='blue')
+abline(model2, col='red')
+
+
+# Problem 02
+library(Matching)
+library(arm)
+data("lalonde")
+set.seed(7)
+newlalonde <- subset(lalonde, treat != 1) 
+model1 <- lm(re78~age+educ+re74+re75+educ:re74+educ:re75+age:re74+age:re75+re74:re75, data = newlalonde)
+sim_results <- sim(model1, 10000)
+
+# holdinng the other predictors at their medians
+med_edu <- median(newlalonde$educ)
+med_re74 <- median(newlalonde$re74)
+med_re75 <- median(newlalonde$re75)
+
+ages <- c(min(newlalonde$age):max(newlalonde$age))
+store <- matrix(0, ncol=length(ages), nrow=10000)
+colnames(store) <- ages
+
+for (age in ages+1){
+  for (j in 1:10000){
+    xs = c(1, age, med_edu, med_re74, med_re75, med_edu*med_re74, med_edu*med_re75, age*med_re74, age*med_re75, med_re74*med_re75)
+    beta = sum(sim_results@coef[j, ] * xs) + rnorm(1, 0, sim_results@sigma[j])
+    store[j, age - min(ages)] <- beta
+  }
+}
+
+conf.intervals <- apply(store, 2, quantile, probs = c(0.025, 0.975))
+View(conf.intervals)
+
+plot(x = c(1:100), y = c(1:100), type = "n", xlim = c(15, 60), ylim = c(-50000, 50000), xlab = "Ages", ylab = "revenue 1978 $")
+for (age in ages+1){
+  for(i in 1:10000){
+    points(x = age, y = store[i, age-min(ages)], pch=19, cex= 0.7)
+  }
+}
+
+# holdinng the other predictors at their 90% quantile
+q90_edu <- quantile(newlalonde$educ, 0.9)
+q90_re74 <- quantile(newlalonde$re74, 0.9)
+q90_re75 <- quantile(newlalonde$re75, 0.9)
+
+store <- matrix(0, ncol=length(ages), nrow=10000)
+colnames(store) <- ages
+
+for (age in ages+1){
+  for (j in 1:10000){
+    xs = c(1, age, q90_edu, q90_re74, q90_re75, q90_edu*q90_re74, q90_edu*q90_re75, age*q90_re74, age*q90_re75, q90_re74*q90_re75)
+    beta = sum(sim_results@coef[j, ]*xs) + rnorm(1, 0, sim_results@sigma[j])
+    store[j, age - min(ages)] <- beta
+  }
+}
+conf.intervals <- apply(store, 2, quantile, probs = c(0.025, 0.975))
+View(conf.intervals)
+plot(x = c(1:100), y = c(1:100), type = "n", xlim = c(15,60), ylim = c(-40000, 40000), xlab = "Ages", ylab = "revenue 1978 $")
+for (age in ages+1){
+  for(i in 1:10000){
+    points(x = age, y = store[i, age-min(ages)], pch=19, cex= 0.7)
+  }
+}
+
+
+# Problem 03
+library(foreign)
+set.seed(7)
+nsw <- read.dta(choose.files())
+model3 <- lm(nsw$re78~nsw$treat, data = nsw)
+storage <- rep(0, 10000)
+
+for (i in 1:10000){ 
+  index <- sample(1:nrow(nsw), nrow(nsw), replace = T)
+  bootsample <- nsw[index, ]
+  sample_lm <- lm(re78 ~ treat, data = bootsample)
+  storage[i] <- sample_lm$coefficient[2]}
+
+qua95 <- quantile(storage, probs = c(0.025, 0.975))
+
+qua95
+confint(model3)
+
+hist(storage, xlim = c(-1000, 3000), ylim = c(0, 1000), xlab = "Coeffecients", 
+     main = "Distribution of the bootstrapped coeffecients", breaks = 40, col = "grey") # labels for the histogram
+
+
+# Problem 04
+R2 <- function(ys, yhat){
+  ym = mean(ys)
+  sse = sum((ys - yhat)^2)
+  ssto = sum((ys - ym)**2)
+  return(1-(sse/ssto))}
+
+hats <- predict(model3, nsw)
+R2(nsw$re78, hats)
+summary(model3)$r.squared
+
+
+# Problem 05
+library(foreign)
+nsw <- read.dta(choose.files())
+nsw <- nsw[, -1]
+logit <- glm(treat~.-re78, data = nsw, family = "binomial")
+proba <- predict(logit, type = "response")
+
+pro <- data.frame(nsw$treat, proba)
+
+treat0 <- subset(pro, nsw.treat == 0)
+treat1 <- subset(pro, nsw.treat != 0)
+
+hist(treat0$proba, main = "Distribution of treatment probability", xlab = "probabilities", 
+     xlim = c(0.3,0.6), ylim = c(0, 200), ,col = "lightblue")
+legend(0.55, 150, legend=c("control group"), col=c("lightblue"), lwd = 5, cex=0.8)
+
+hist(treat1$proba, main = "Distribution of treatment probability", xlab = "probabilities", 
+     xlim = c(0.3,0.6), ylim = c(0, 200), ,col = "indianred1")
+legend(0.55, 150, legend=c("treatment group"), col=c("indianred1"), lwd = 5, cex=0.8)
