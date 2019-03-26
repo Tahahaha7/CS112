@@ -1,2 +1,2 @@
-# CS112
+# CS112 RStudio
 Knowledge: Information Based Decisions
