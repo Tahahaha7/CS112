@@ -1,3 +1,3 @@
-# CS112 RStudio
+# CS112
 ## Knowledge: Information Based Decisions
-### Environment: Python
+### Environment: RStudio
